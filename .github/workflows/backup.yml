@@ -1,0 +1,38 @@
+name: Turso Auto-Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Turso CLI
+        run: curl -sSfL https://get.tur.so/install.sh | bash
+      
+      - name: Export from Turso
+        env:
+          TURSO_CONNECTION_URL: ${{ secrets.TURSO_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_TOKEN }}
+        run: |
+          mkdir -p backups
+          
+          # Export each table
+          tables="mesh_metrics morphic_field kv_store task_queue routing_cache holon_lessons mesh_devices sentinel_logs dev_tasks dev_workers dev_budget"
+          
+          for table in $tables; do
+            echo "Exporting $table..."
+            turso db shell kb-metadata-turso "SELECT * FROM $table;" > "backups/${table}_$(date +%Y%m%d).sql"
+          done
+      
+      - name: Commit and Push
+        run: |
+          git config user.name "Claude Auto-Backup"
+          git config user.email "claude@ofshore.dev"
+          git add backups/
+          git commit -m "🔄 Auto-backup Turso - $(date +%Y-%m-%d)" || echo "No changes"
+          git push
